@@ -65,7 +65,7 @@ The current pipeline supports:
 Exact labeling uses exhaustive edge-state enumeration. Keep `max_label_edges` small
 for real experiments. Larger real graphs should be sliced into subgraphs first.
 
-Minimal example:
+Programmatic example:
 
 ```python
 from functional_stability.dataset import export_jsonl, export_metadata_csv, make_sample
@@ -79,6 +79,71 @@ sample = make_sample("abilene-001", loaded.source, subgraph, matrix_size=10, max
 export_jsonl([sample], "software/outputs/dataset.jsonl")
 export_metadata_csv([sample], "software/outputs/metadata.csv")
 ```
+
+## CLI Usage
+
+Run the CLI from the `software` directory with `PYTHONPATH` pointed at `src`.
+
+PowerShell:
+
+```powershell
+cd software
+$env:PYTHONPATH = "src"
+```
+
+Synthetic graph example:
+
+```powershell
+python -m functional_stability.cli `
+  --sample-id synthetic-er-001 `
+  --source synthetic `
+  --synthetic-model erdos-renyi `
+  --nodes 8 `
+  --edge-probability 0.3 `
+  --edge-reliability 0.99 `
+  --seed 1 `
+  --matrix-size 8 `
+  --max-label-edges 20 `
+  --output-jsonl outputs/synthetic_er_dataset.jsonl `
+  --output-metadata outputs/synthetic_er_metadata.csv
+```
+
+Real Topology Zoo GraphML example:
+
+```powershell
+python -m functional_stability.cli `
+  --sample-id abilene-topozoo-bfs-8 `
+  --source file `
+  --topology-file data/topology_zoo/Abilene.graphml `
+  --topology-type graphml `
+  --edge-reliability 0.99 `
+  --subgraph-method bfs `
+  --start-node 0 `
+  --subgraph-nodes 8 `
+  --matrix-size 8 `
+  --max-label-edges 20 `
+  --output-jsonl outputs/abilene_topozoo_sample.jsonl `
+  --output-metadata outputs/abilene_topozoo_metadata.csv
+```
+
+Supported `--subgraph-method` values:
+
+- `none`: use the whole graph;
+- `largest`: use the largest connected component;
+- `bfs`: extract a connected BFS subgraph from `--start-node`;
+- `random`: extract a connected subgraph from a seeded random start node.
+
+The Abilene sample prepared for the first real experiment uses Internet Topology Zoo:
+
+- source file: `software/data/topology_zoo/Abilene.graphml`;
+- output JSONL: `software/outputs/abilene_topozoo_sample.jsonl`;
+- output metadata: `software/outputs/abilene_topozoo_metadata.csv`;
+- sample shape: 8 nodes, 9 edges, 8x8 adjacency matrix;
+- label: exact all-terminal reliability with edge reliability `0.99`.
+
+The `software/data/` and `software/outputs/` directories are ignored by git because
+source datasets and generated experiment outputs should be reproducible artifacts, not
+repository source code.
 
 ## Run Tests
 

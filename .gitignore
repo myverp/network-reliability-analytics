@@ -14,6 +14,8 @@ env/
 build/
 dist/
 *.egg-info/
+/software/data/
+/software/outputs/
 
 # Thesis source documents are kept locally, not in the software repository
 /3.1/

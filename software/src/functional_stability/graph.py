@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from random import Random
 
@@ -68,6 +69,46 @@ class Graph:
             matrix[edge.source][edge.target] = edge.reliability
             matrix[edge.target][edge.source] = edge.reliability
         return matrix
+
+    def neighbors(self) -> list[list[int]]:
+        adjacency: list[list[int]] = [[] for _ in range(self.node_count)]
+        for edge in self.edges:
+            adjacency[edge.source].append(edge.target)
+            adjacency[edge.target].append(edge.source)
+        return adjacency
+
+    def is_connected(self) -> bool:
+        if self.node_count == 1:
+            return True
+        adjacency = self.neighbors()
+        visited = {0}
+        queue: deque[int] = deque([0])
+
+        while queue:
+            node = queue.popleft()
+            for neighbor in adjacency[node]:
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+        return len(visited) == self.node_count
+
+    def relabeled_subgraph(self, nodes: list[int] | tuple[int, ...]) -> "Graph":
+        """Return the induced subgraph over selected nodes with compact indexes."""
+
+        ordered_nodes = list(dict.fromkeys(nodes))
+        if not ordered_nodes:
+            raise ValueError("Subgraph must contain at least one node")
+        if min(ordered_nodes) < 0 or max(ordered_nodes) >= self.node_count:
+            raise ValueError("Subgraph node is outside graph node range")
+
+        node_map = {old: new for new, old in enumerate(ordered_nodes)}
+        selected = set(ordered_nodes)
+        edges = [
+            Edge(node_map[edge.source], node_map[edge.target], edge.reliability)
+            for edge in self.edges
+            if edge.source in selected and edge.target in selected
+        ]
+        return Graph(len(ordered_nodes), tuple(edges))
 
 
 def complete_graph(node_count: int, reliability: float) -> Graph:

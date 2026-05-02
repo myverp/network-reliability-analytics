@@ -145,6 +145,53 @@ The `software/data/` and `software/outputs/` directories are ignored by git beca
 source datasets and generated experiment outputs should be reproducible artifacts, not
 repository source code.
 
+## Experimental Dataset Policy
+
+The first reproducible pre-CNN dataset policy is stored in `dataset_policy.json`.
+It is intentionally small enough for exact all-terminal reliability labeling while still
+covering several topology patterns.
+
+Chosen setup:
+
+- matrix size: `10x10`;
+- graph sizes: `6`, `8`, and `10` nodes;
+- edge reliability values: `0.95`, `0.97`, and `0.99`;
+- exact label limit: at most `20` edges, with disconnected graphs labeled as `0.0`;
+- synthetic models:
+  - Erdos-Renyi with `p = 0.3`, connected by construction;
+  - Waxman-like with `alpha = 0.35`, connected by construction;
+  - Barabasi-Albert with `m = 2`;
+- synthetic dataset size: `270` samples:
+  `3 models * 3 graph sizes * 3 reliability values * 10 seeds`;
+- real topology source for the first policy run: Internet Topology Zoo Abilene GraphML;
+- real subgraph sizes: `6`, `8`, and `10` nodes;
+- real subgraph methods: deterministic BFS and seeded random connected subgraph;
+- real dataset size for one source: `36` samples:
+  `3 graph sizes * 3 reliability values * 2 methods * 2 samples`;
+- split policy: sort by `sample_id`, then use `70%` train, `15%` validation, `15%` test.
+
+The split is defined as a policy rather than performed by the current CLI. This avoids
+mixing dataset generation with model-training concerns before the CNN stage.
+
+Repeatable generation command:
+
+```powershell
+cd software
+.\scripts\generate_policy_dataset.ps1
+```
+
+The script writes one JSONL and one metadata CSV per generated sample under
+`software/outputs/policy/`. Combining these per-sample files into train/validation/test
+files is the next dataset-engineering step.
+
+Quick policy smoke checks:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m functional_stability.cli --sample-id syn-erdos-renyi-n8-r0.99-0 --source synthetic --synthetic-model erdos-renyi --nodes 8 --edge-probability 0.3 --edge-reliability 0.99 --seed 10000 --matrix-size 10 --max-label-edges 20 --output-jsonl outputs/policy_smoke_syn.jsonl --output-metadata outputs/policy_smoke_syn.csv
+python -m functional_stability.cli --sample-id real-abilene-bfs-n8-r0.99-0 --source file --topology-file data/topology_zoo/Abilene.graphml --topology-type graphml --edge-reliability 0.99 --subgraph-method bfs --start-node 0 --subgraph-nodes 8 --matrix-size 10 --max-label-edges 20 --output-jsonl outputs/policy_smoke_real.jsonl --output-metadata outputs/policy_smoke_real.csv
+```
+
 ## Run Tests
 
 ```powershell

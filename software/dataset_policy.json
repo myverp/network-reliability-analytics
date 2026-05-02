@@ -1,0 +1,55 @@
+{
+  "version": "0.1",
+  "purpose": "Pre-CNN reproducible dataset policy for all-terminal reliability approximation experiments.",
+  "matrix_size": 10,
+  "max_label_edges": 20,
+  "edge_reliability_values": [0.95, 0.97, 0.99],
+  "split": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15,
+    "assignment": "deterministic by ordered sample id after generation"
+  },
+  "synthetic": {
+    "graph_sizes": [6, 8, 10],
+    "samples_per_model_size_reliability": 10,
+    "models": {
+      "erdos-renyi": {
+        "edge_probability": 0.3,
+        "ensure_connected": true,
+        "seed_policy": "10000 + sample_index"
+      },
+      "waxman": {
+        "alpha": 0.35,
+        "ensure_connected": true,
+        "seed_policy": "20000 + sample_index"
+      },
+      "barabasi-albert": {
+        "attach_edges": 2,
+        "seed_policy": "30000 + sample_index"
+      }
+    },
+    "target_sample_count": 270
+  },
+  "real_graphs": {
+    "sources": [
+      {
+        "name": "Internet Topology Zoo Abilene",
+        "file": "software/data/topology_zoo/Abilene.graphml",
+        "type": "graphml",
+        "url": "https://topology-zoo.org/files/Abilene.graphml"
+      }
+    ],
+    "subgraph_sizes": [6, 8, 10],
+    "subgraph_methods": ["bfs", "random"],
+    "samples_per_source_size_method_reliability": 2,
+    "seed_policy": "40000 + sample_index",
+    "target_sample_count_for_one_source": 36
+  },
+  "outputs": {
+    "synthetic_jsonl": "software/outputs/policy/synthetic_dataset.jsonl",
+    "synthetic_metadata": "software/outputs/policy/synthetic_metadata.csv",
+    "real_jsonl": "software/outputs/policy/real_topology_dataset.jsonl",
+    "real_metadata": "software/outputs/policy/real_topology_metadata.csv"
+  }
+}

@@ -234,6 +234,34 @@ ordered by a stable hash of `sample_id` inside each group, and then divided acco
 to the policy ratios. The hash ordering avoids accidental train/validation/test bias
 from lexicographic sample names such as `n10`, `n6`, and `n8`.
 
+## Baseline Evaluation
+
+Before CNN training, run simple non-CNN baselines on the final split files:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m functional_stability.baseline_cli `
+  --train outputs/final_policy_dataset/train.jsonl `
+  --validation outputs/final_policy_dataset/validation.jsonl `
+  --test outputs/final_policy_dataset/test.jsonl `
+  --output outputs/final_policy_dataset/baseline_report.json `
+  --ridge-alpha 1.0
+```
+
+The baseline stage evaluates:
+
+- mean-label predictor;
+- ridge regression over flattened adjacency matrices.
+
+Current local baseline result on the full policy dataset:
+
+- mean baseline test MAE: `0.052848`;
+- mean baseline test RMSE: `0.067589`;
+- ridge baseline test MAE: `0.035949`;
+- ridge baseline test RMSE: `0.048865`.
+
+Any CNN model should beat the ridge baseline, not only the mean baseline.
+
 ## Run Tests
 
 ```powershell

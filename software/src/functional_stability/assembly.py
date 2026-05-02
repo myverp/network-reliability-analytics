@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import glob
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,8 +33,7 @@ def assemble_dataset(
     records = _load_jsonl_records(input_glob)
     _validate_records(records, policy, allow_skipped_labels=allow_skipped_labels)
 
-    sorted_records = sorted(records, key=lambda record: record["sample_id"])
-    splits = _split_records(sorted_records, policy["split"])
+    splits = _split_records(records, policy["split"])
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -43,7 +43,7 @@ def assemble_dataset(
         _write_metadata(split_records, output_dir / f"{split_name}_metadata.csv")
 
     report = {
-        "sample_count": len(sorted_records),
+        "sample_count": len(records),
         "matrix_size": policy["matrix_size"],
         "split_counts": {name: len(items) for name, items in splits.items()},
         "source_glob": input_glob,
@@ -55,7 +55,7 @@ def assemble_dataset(
     )
 
     return SplitResult(
-        sample_count=len(sorted_records),
+        sample_count=len(records),
         train_count=len(splits["train"]),
         validation_count=len(splits["validation"]),
         test_count=len(splits["test"]),
@@ -154,16 +154,46 @@ def _split_records(
     if abs(ratio_sum - 1.0) > 1e-9:
         raise DatasetAssemblyError(f"Split ratios must sum to 1.0, got {ratio_sum}")
 
-    sample_count = len(records)
-    train_count = int(sample_count * train_ratio)
-    validation_count = int(sample_count * validation_ratio)
-    test_count = sample_count - train_count - validation_count
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for record in records:
+        grouped.setdefault(_stratification_key(record), []).append(record)
 
-    return {
-        "train": records[:train_count],
-        "validation": records[train_count : train_count + validation_count],
-        "test": records[train_count + validation_count : train_count + validation_count + test_count],
-    }
+    splits: dict[str, list[dict[str, object]]] = {"train": [], "validation": [], "test": []}
+    for group_key in sorted(grouped):
+        group_records = sorted(grouped[group_key], key=_stable_sample_hash)
+        group_count = len(group_records)
+        train_count = int(group_count * train_ratio)
+        validation_count = int(group_count * validation_ratio)
+        test_count = group_count - train_count - validation_count
+
+        splits["train"].extend(group_records[:train_count])
+        splits["validation"].extend(group_records[train_count : train_count + validation_count])
+        splits["test"].extend(
+            group_records[train_count + validation_count : train_count + validation_count + test_count]
+        )
+
+    for split_name in splits:
+        splits[split_name] = sorted(splits[split_name], key=lambda record: str(record["sample_id"]))
+    return splits
+
+
+def _stratification_key(record: dict[str, object]) -> str:
+    sample_id = str(record["sample_id"])
+    source = str(record.get("source", ""))
+
+    if sample_id.startswith("syn-"):
+        prefix = sample_id.split("-n", 1)[0]
+        return prefix.replace("syn-", "synthetic:")
+    if sample_id.startswith("real-abilene-bfs"):
+        return "real:abilene:bfs"
+    if sample_id.startswith("real-abilene-random"):
+        return "real:abilene:random"
+    return source
+
+
+def _stable_sample_hash(record: dict[str, object]) -> str:
+    sample_id = str(record["sample_id"])
+    return hashlib.sha1(sample_id.encode("utf-8")).hexdigest()
 
 
 def _write_jsonl(records: list[dict[str, object]], path: Path) -> None:

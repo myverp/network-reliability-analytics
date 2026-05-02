@@ -36,8 +36,30 @@ class DatasetAssemblyTests(unittest.TestCase):
         self.assertEqual(len(train_records), 7)
         self.assertEqual(len(validation_records), 1)
         self.assertEqual(len(test_records), 2)
-        self.assertEqual(train_records[0]["sample_id"], "sample-00")
-        self.assertEqual(first_metadata["sample_id"], "sample-00")
+        self.assertEqual(len({record["sample_id"] for record in train_records}), 7)
+        self.assertIn(first_metadata["sample_id"], {record["sample_id"] for record in train_records})
+
+    def test_split_is_stratified_by_sample_family(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            policy = _write_policy(root, matrix_size=3)
+            for index in range(10):
+                _write_sample(root / f"er_{index}.jsonl", f"syn-erdos-renyi-n6-r0.99-{index}", matrix_size=3)
+                _write_sample(root / f"wx_{index}.jsonl", f"syn-waxman-n6-r0.99-{index}", matrix_size=3)
+
+            assemble_dataset(str(root / "*.jsonl"), root / "final", policy)
+
+            train_records = _read_jsonl(root / "final" / "train.jsonl")
+            validation_records = _read_jsonl(root / "final" / "validation.jsonl")
+            test_records = _read_jsonl(root / "final" / "test.jsonl")
+
+        self.assertEqual(len(train_records), 14)
+        self.assertEqual(len(validation_records), 2)
+        self.assertEqual(len(test_records), 4)
+        self.assertEqual(_count_prefix(train_records, "syn-erdos-renyi"), 7)
+        self.assertEqual(_count_prefix(train_records, "syn-waxman"), 7)
+        self.assertEqual(_count_prefix(test_records, "syn-erdos-renyi"), 2)
+        self.assertEqual(_count_prefix(test_records, "syn-waxman"), 2)
 
     def test_duplicate_sample_id_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -133,6 +155,10 @@ def _write_sample(
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _count_prefix(records: list[dict[str, object]], prefix: str) -> int:
+    return sum(1 for record in records if str(record["sample_id"]).startswith(prefix))
 
 
 if __name__ == "__main__":

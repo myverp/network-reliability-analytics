@@ -168,10 +168,12 @@ Chosen setup:
 - real subgraph methods: deterministic BFS and seeded random connected subgraph;
 - real dataset size for one source: `36` samples:
   `3 graph sizes * 3 reliability values * 2 methods * 2 samples`;
-- split policy: sort by `sample_id`, then use `70%` train, `15%` validation, `15%` test.
+- split policy: deterministic stratified split by graph family/source, then stable
+  hash ordering by `sample_id` inside each group; use `70%` train, `15%` validation,
+  `15%` test.
 
-The split is defined as a policy rather than performed by the current CLI. This avoids
-mixing dataset generation with model-training concerns before the CNN stage.
+The split is performed by the assembly CLI. It is stratified to avoid a biased split
+where one graph family appears only in validation or test.
 
 Repeatable generation command:
 
@@ -227,8 +229,10 @@ The output directory contains:
 - `train_metadata.csv`, `validation_metadata.csv`, `test_metadata.csv`;
 - `assembly_report.json`.
 
-The split is deterministic: samples are sorted by `sample_id`, then divided according
-to the policy ratios.
+The split is deterministic and stratified: samples are grouped by graph family/source,
+ordered by a stable hash of `sample_id` inside each group, and then divided according
+to the policy ratios. The hash ordering avoids accidental train/validation/test bias
+from lexicographic sample names such as `n10`, `n6`, and `n8`.
 
 ## Run Tests
 

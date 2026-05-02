@@ -192,6 +192,44 @@ python -m functional_stability.cli --sample-id syn-erdos-renyi-n8-r0.99-0 --sour
 python -m functional_stability.cli --sample-id real-abilene-bfs-n8-r0.99-0 --source file --topology-file data/topology_zoo/Abilene.graphml --topology-type graphml --edge-reliability 0.99 --subgraph-method bfs --start-node 0 --subgraph-nodes 8 --matrix-size 10 --max-label-edges 20 --output-jsonl outputs/policy_smoke_real.jsonl --output-metadata outputs/policy_smoke_real.csv
 ```
 
+## Dataset Assembly And Split
+
+After sample generation, assemble validated samples into deterministic split files:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m functional_stability.assemble_cli `
+  --input-glob "outputs/policy/*.jsonl" `
+  --policy dataset_policy.json `
+  --output-dir outputs/final_policy_dataset
+```
+
+For a quick smoke split using the two policy smoke samples:
+
+```powershell
+python -m functional_stability.assemble_cli `
+  --input-glob "outputs/policy_smoke_*.jsonl" `
+  --policy dataset_policy.json `
+  --output-dir outputs/final_policy_smoke
+```
+
+The assembly stage validates:
+
+- duplicate `sample_id` values;
+- missing labels;
+- skipped/non-exact labels unless explicitly allowed;
+- matrix size consistency with `dataset_policy.json`;
+- valid node and edge counts.
+
+The output directory contains:
+
+- `train.jsonl`, `validation.jsonl`, `test.jsonl`;
+- `train_metadata.csv`, `validation_metadata.csv`, `test_metadata.csv`;
+- `assembly_report.json`.
+
+The split is deterministic: samples are sorted by `sample_id`, then divided according
+to the policy ratios.
+
 ## Run Tests
 
 ```powershell

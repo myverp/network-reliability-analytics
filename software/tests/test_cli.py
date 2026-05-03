@@ -1,7 +1,6 @@
 import csv
 import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,11 +8,12 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from functional_stability.cli import main
+from helpers import temporary_directory
 
 
 class CliTests(unittest.TestCase):
     def test_cli_exports_synthetic_dataset(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             output_jsonl = Path(directory) / "dataset.jsonl"
             output_csv = Path(directory) / "metadata.csv"
 
@@ -54,7 +54,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(metadata["source"], "synthetic:erdos-renyi")
 
     def test_cli_exports_file_dataset_with_bfs_subgraph(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             topology = Path(directory) / "toy.graphml"
             output_jsonl = Path(directory) / "dataset.jsonl"
             output_csv = Path(directory) / "metadata.csv"

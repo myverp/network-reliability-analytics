@@ -1,6 +1,5 @@
 import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -9,11 +8,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from functional_stability.baseline import evaluate_mean_baseline, load_split, run_baselines
 from functional_stability.baseline_cli import main as baseline_main
+from helpers import temporary_directory
 
 
 class BaselineTests(unittest.TestCase):
     def test_load_split_flattens_adjacency_matrices(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             path = Path(directory) / "split.jsonl"
             _write_records(path, [("a", 0.5), ("b", 0.7)])
 
@@ -24,7 +24,7 @@ class BaselineTests(unittest.TestCase):
         self.assertEqual(split.sample_ids, ["a", "b"])
 
     def test_mean_baseline_metrics_are_computed(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             train_path = Path(directory) / "train.jsonl"
             test_path = Path(directory) / "test.jsonl"
             _write_records(train_path, [("a", 0.5), ("b", 0.7)])
@@ -38,7 +38,7 @@ class BaselineTests(unittest.TestCase):
         self.assertAlmostEqual(metrics.rmse, (0.02) ** 0.5)
 
     def test_run_baselines_writes_report(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             train = root / "train.jsonl"
             validation = root / "validation.jsonl"
@@ -56,7 +56,7 @@ class BaselineTests(unittest.TestCase):
         self.assertEqual(saved["sample_counts"]["train"], 3)
 
     def test_baseline_cli_runs(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             train = root / "train.jsonl"
             validation = root / "validation.jsonl"

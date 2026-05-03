@@ -1,7 +1,6 @@
 import csv
 import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -26,6 +25,7 @@ from functional_stability.topology_loader import (
     load_graphml,
     load_topology_zoo_gml,
 )
+from helpers import temporary_directory
 
 
 class DatasetPipelineTests(unittest.TestCase):
@@ -71,7 +71,7 @@ class DatasetPipelineTests(unittest.TestCase):
         self.assertTrue(bfs.is_connected())
 
     def test_graphml_loader_reads_nodes_and_edges(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             path = Path(directory) / "toy.graphml"
             path.write_text(
                 """<?xml version="1.0" encoding="UTF-8"?>
@@ -95,7 +95,7 @@ class DatasetPipelineTests(unittest.TestCase):
         self.assertEqual(loaded.node_labels, ("a", "b", "c"))
 
     def test_gml_loader_reads_topology_zoo_style_file(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             path = Path(directory) / "toy.gml"
             path.write_text(
                 """
@@ -124,7 +124,7 @@ graph [
         self.assertEqual(loaded.node_labels, ("Kyiv", "Lviv"))
 
     def test_caida_loader_reads_pipe_delimited_as_relationships(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             path = Path(directory) / "as-rel.txt"
             path.write_text(
                 """
@@ -145,7 +145,7 @@ graph [
     def test_dataset_export_writes_jsonl_and_metadata(self):
         sample = make_sample("toy-1", "unit-test", path_graph(3, 0.9), matrix_size=4, max_label_edges=5)
 
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             jsonl_path = Path(directory) / "dataset.jsonl"
             csv_path = Path(directory) / "metadata.csv"
             export_jsonl([sample], jsonl_path)

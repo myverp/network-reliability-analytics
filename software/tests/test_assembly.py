@@ -1,7 +1,6 @@
 import csv
 import json
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -10,11 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from functional_stability.assemble_cli import main as assemble_main
 from functional_stability.assembly import DatasetAssemblyError, assemble_dataset
+from helpers import temporary_directory
 
 
 class DatasetAssemblyTests(unittest.TestCase):
     def test_assemble_dataset_creates_deterministic_splits(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             policy = _write_policy(root, matrix_size=3)
             for index in range(10):
@@ -40,7 +40,7 @@ class DatasetAssemblyTests(unittest.TestCase):
         self.assertIn(first_metadata["sample_id"], {record["sample_id"] for record in train_records})
 
     def test_split_is_stratified_by_sample_family(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             policy = _write_policy(root, matrix_size=3)
             for index in range(10):
@@ -62,7 +62,7 @@ class DatasetAssemblyTests(unittest.TestCase):
         self.assertEqual(_count_prefix(test_records, "syn-waxman"), 2)
 
     def test_duplicate_sample_id_is_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             policy = _write_policy(root, matrix_size=3)
             _write_sample(root / "a.jsonl", "duplicate", matrix_size=3)
@@ -72,7 +72,7 @@ class DatasetAssemblyTests(unittest.TestCase):
                 assemble_dataset(str(root / "*.jsonl"), root / "final", policy)
 
     def test_missing_label_is_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             policy = _write_policy(root, matrix_size=3)
             _write_sample(root / "a.jsonl", "missing-label", matrix_size=3, label=None)
@@ -81,7 +81,7 @@ class DatasetAssemblyTests(unittest.TestCase):
                 assemble_dataset(str(root / "*.jsonl"), root / "final", policy)
 
     def test_skipped_label_is_rejected_by_default(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             policy = _write_policy(root, matrix_size=3)
             _write_sample(root / "a.jsonl", "skipped", matrix_size=3, label_method="skipped_too_many_edges")
@@ -90,7 +90,7 @@ class DatasetAssemblyTests(unittest.TestCase):
                 assemble_dataset(str(root / "*.jsonl"), root / "final", policy)
 
     def test_inconsistent_matrix_size_is_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             policy = _write_policy(root, matrix_size=4)
             _write_sample(root / "a.jsonl", "bad-matrix", matrix_size=3)
@@ -99,7 +99,7 @@ class DatasetAssemblyTests(unittest.TestCase):
                 assemble_dataset(str(root / "*.jsonl"), root / "final", policy)
 
     def test_assemble_cli_runs(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with temporary_directory() as directory:
             root = Path(directory)
             policy = _write_policy(root, matrix_size=3)
             for index in range(4):

@@ -16,6 +16,7 @@ dist/
 *.egg-info/
 /software/data/
 /software/outputs/
+/software/.test_tmp/
 
 # Thesis source documents are kept locally, not in the software repository
 /3.1/

@@ -20,6 +20,8 @@ model needs a reliable source of target values first.
 - `functional_stability.topology_loader`: local loaders for public topology files.
 - `functional_stability.subgraph`: connected subgraph extraction for large topologies.
 - `functional_stability.dataset`: adjacency preparation, feasible exact labeling, and export.
+- `functional_stability.cnn_smoke`: minimal PyTorch CNN smoke experiment for
+  reliability regression.
 
 ## Real Topology Sources
 
@@ -262,6 +264,60 @@ Current local baseline result on the full policy dataset:
 
 Any CNN model should beat the ridge baseline, not only the mean baseline.
 
+## Minimal CNN Smoke Experiment
+
+The first CNN stage is intentionally small. It checks that the final `10x10`
+adjacency matrices can be consumed by a PyTorch regression model and compared with
+the current ridge baseline. This is not thesis-scale tuning.
+
+Install dependencies:
+
+```powershell
+cd software
+python -m pip install -r requirements.txt
+```
+
+If only the missing CNN dependency is needed:
+
+```powershell
+python -m pip install torch
+```
+
+Train and evaluate the smoke CNN:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m functional_stability.cnn_smoke_cli `
+  --train outputs/final_policy_dataset/train.jsonl `
+  --validation outputs/final_policy_dataset/validation.jsonl `
+  --test outputs/final_policy_dataset/test.jsonl `
+  --output outputs/final_policy_dataset/cnn_smoke_report.json `
+  --epochs 50 `
+  --batch-size 32 `
+  --learning-rate 0.001 `
+  --seed 42 `
+  --ridge-test-mae 0.035949
+```
+
+The CNN input shape is `1 x 10 x 10`; the output is one predicted reliability
+value. The report is written to `outputs/final_policy_dataset/cnn_smoke_report.json`
+and includes validation/test MAE, validation/test RMSE, training settings, model
+parameter count, and whether the CNN beats ridge test MAE `0.035949`.
+
+Current smoke architecture:
+
+- `Conv2d(1, 8, kernel_size=3, padding=1)`;
+- `ReLU`;
+- `Conv2d(8, 16, kernel_size=3, padding=1)`;
+- `ReLU`;
+- `AdaptiveAvgPool2d(1, 1)`;
+- `Linear(16, 16)`;
+- `ReLU`;
+- `Linear(16, 1)`.
+
+If PyTorch is not installed, the CLI exits with a clear install message and no
+training report is produced.
+
 ## Run Tests
 
 ```powershell
@@ -272,5 +328,5 @@ python -m unittest discover -s tests
 ## Planned Stack
 
 The thesis materials justify Python with NetworkX, NumPy, PyTorch, scikit-learn, and
-matplotlib. The current dataset foundation still uses only the Python standard library
-so it can be tested before the full CNN stack is installed.
+matplotlib. The dataset and baseline stages use NumPy. The CNN smoke stage requires
+PyTorch.

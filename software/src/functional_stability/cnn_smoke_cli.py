@@ -23,6 +23,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--learning-rate", type=float, default=0.001, help="Adam learning rate.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=20,
+        help="Stop a model after this many epochs without validation MAE improvement.",
+    )
+    parser.add_argument(
         "--ridge-test-mae",
         type=float,
         default=0.035949,
@@ -41,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
             batch_size=args.batch_size,
             learning_rate=args.learning_rate,
             seed=args.seed,
+            early_stopping_patience=args.early_stopping_patience,
             ridge_test_mae_reference=args.ridge_test_mae,
         )
     except RuntimeError as error:
@@ -63,15 +70,21 @@ def main(argv: list[str] | None = None) -> int:
         )
         parser.exit(2, f"{error}\n")
 
-    test = result["metrics"]["test"]
-    validation = result["metrics"]["validation"]
     comparison = result["baseline_comparison"]
+    print("cnn smoke model comparison")
+    for model_name, model_result in result["models"].items():
+        validation = model_result["metrics"]["validation"]
+        test = model_result["metrics"]["test"]
+        print(
+            f"{model_name}: "
+            f"validation_mae={validation['mae']:.6g} "
+            f"validation_rmse={validation['rmse']:.6g} "
+            f"test_mae={test['mae']:.6g} "
+            f"test_rmse={test['rmse']:.6g} "
+            f"best_epoch={model_result['training']['best_epoch']}"
+        )
     print(
-        "cnn smoke results "
-        f"validation_mae={validation['mae']:.6g} "
-        f"validation_rmse={validation['rmse']:.6g} "
-        f"test_mae={test['mae']:.6g} "
-        f"test_rmse={test['rmse']:.6g} "
+        f"best_model={result['best_model']} "
         f"beats_ridge={comparison['beats_ridge_test_mae']}"
     )
     return 0

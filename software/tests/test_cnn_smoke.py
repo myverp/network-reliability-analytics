@@ -5,7 +5,12 @@ from io import StringIO
 from pathlib import Path
 
 from functional_stability.cnn_smoke_cli import main as cnn_smoke_main
-from functional_stability.cnn_smoke import load_cnn_split, run_cnn_smoke, torch_available
+from functional_stability.cnn_smoke import (
+    load_cnn_split,
+    run_cnn_smoke,
+    run_stronger_cnn_multiseed,
+    torch_available,
+)
 from helpers import temporary_directory
 
 
@@ -96,6 +101,34 @@ class CnnSmokeTests(unittest.TestCase):
         self.assertTrue(output.exists())
         self.assertIn("test", result["metrics"])
         self.assertEqual([1, 10, 10], result["input_shape"])
+
+    @unittest.skipUnless(torch_available(), "PyTorch is not installed")
+    def test_stronger_cnn_multiseed_writes_summary_when_torch_is_available(self):
+        with temporary_directory() as directory:
+            root = Path(directory)
+            train = root / "train.jsonl"
+            validation = root / "validation.jsonl"
+            test = root / "test.jsonl"
+            output = root / "multiseed.json"
+            _write_split(train, ["train-1", "train-2"])
+            _write_split(validation, ["validation-1"])
+            _write_split(test, ["test-1"])
+
+            result = run_stronger_cnn_multiseed(
+                train,
+                validation,
+                test,
+                output,
+                seeds=[42],
+                epochs=1,
+                batch_size=1,
+                early_stopping_patience=1,
+            )
+
+        self.assertTrue(output.exists())
+        self.assertEqual("stronger_cnn", result["model"])
+        self.assertEqual(1, len(result["per_seed"]))
+        self.assertIn("summary", result)
 
 
 def _write_split(path: Path, sample_ids: list[str]) -> None:

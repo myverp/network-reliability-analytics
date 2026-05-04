@@ -283,7 +283,7 @@ If only the missing CNN dependency is needed:
 python -m pip install torch
 ```
 
-Train and evaluate the smoke CNN:
+Train and evaluate the smoke model comparison:
 
 ```powershell
 $env:PYTHONPATH = "src"
@@ -296,24 +296,120 @@ python -m functional_stability.cnn_smoke_cli `
   --batch-size 32 `
   --learning-rate 0.001 `
   --seed 42 `
+  --early-stopping-patience 20 `
   --ridge-test-mae 0.035949
 ```
 
-The CNN input shape is `1 x 10 x 10`; the output is one predicted reliability
+The model input shape is `1 x 10 x 10`; the output is one predicted reliability
 value. The report is written to `outputs/final_policy_dataset/cnn_smoke_report.json`
 and includes validation/test MAE, validation/test RMSE, training settings, model
-parameter count, and whether the CNN beats ridge test MAE `0.035949`.
+parameter counts, and whether the best neural model beats ridge test MAE `0.035949`.
+Inputs are standardized using the train split mean and standard deviation. Training
+uses early stopping on validation MAE.
 
-Current smoke architecture:
+Current smoke candidates:
 
-- `Conv2d(1, 8, kernel_size=3, padding=1)`;
-- `ReLU`;
-- `Conv2d(8, 16, kernel_size=3, padding=1)`;
-- `ReLU`;
-- `AdaptiveAvgPool2d(1, 1)`;
-- `Linear(16, 16)`;
-- `ReLU`;
-- `Linear(16, 1)`.
+- `small_cnn`: `Conv2d(1,8,3,pad=1) -> ReLU -> Conv2d(8,16,3,pad=1) -> ReLU -> AdaptiveAvgPool2d(1,1) -> Linear(16,16) -> ReLU -> Linear(16,1)`;
+- `stronger_cnn`: `Conv2d(1,16,3,pad=1) -> ReLU -> Conv2d(16,32,3,pad=1) -> ReLU -> AdaptiveAvgPool2d(2,2) -> Linear(128,32) -> ReLU -> Linear(32,1)`;
+- `mlp`: `Flatten(10x10) -> Linear(100,64) -> ReLU -> Linear(64,32) -> ReLU -> Linear(32,1)`.
+
+Best current local result with `--epochs 300`, `--early-stopping-patience 30`,
+and seed `42`:
+
+- `small_cnn`: validation MAE `0.039054`, validation RMSE `0.049886`,
+  test MAE `0.040580`, test RMSE `0.053457`;
+- `stronger_cnn`: validation MAE `0.028870`, validation RMSE `0.044272`,
+  test MAE `0.031942`, test RMSE `0.048117`;
+- `mlp`: validation MAE `0.042460`, validation RMSE `0.090848`,
+  test MAE `0.051892`, test RMSE `0.124082`.
+
+The current best model is `stronger_cnn`, which beats ridge test MAE `0.035949`
+on this smoke split.
+
+### Stronger CNN Multi-Seed Evaluation
+
+After selecting `stronger_cnn`, run the same dataset and hyperparameters across
+several fixed random seeds:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m functional_stability.cnn_multiseed_cli `
+  --train outputs/final_policy_dataset/train.jsonl `
+  --validation outputs/final_policy_dataset/validation.jsonl `
+  --test outputs/final_policy_dataset/test.jsonl `
+  --output outputs/final_policy_dataset/stronger_cnn_multiseed_report.json `
+  --seeds 42,43,44,45,46 `
+  --epochs 300 `
+  --batch-size 32 `
+  --learning-rate 0.001 `
+  --early-stopping-patience 30 `
+  --ridge-test-mae 0.035949
+```
+
+The report format contains:
+
+- `per_seed`: validation/test MAE and RMSE, best epoch, training time, and whether
+  the seed beats ridge test MAE;
+- `summary`: mean and standard deviation for validation/test MAE and RMSE;
+- `consistently_beats_ridge_test_mae`: true only when every seed beats ridge test
+  MAE `0.035949`.
+
+Current local five-seed result for seeds `42,43,44,45,46`:
+
+- validation MAE mean/std: `0.029452` / `0.002063`;
+- validation RMSE mean/std: `0.043867` / `0.003215`;
+- test MAE mean/std: `0.035027` / `0.002533`;
+- test RMSE mean/std: `0.050275` / `0.001152`;
+- consistently beats ridge test MAE `0.035949`: `false`.
+
+### Repeated Stronger CNN vs Ridge Evaluation
+
+For thesis-quality reporting, compare the selected neural model with ridge on the
+same train/validation/test split using repeated fixed neural seeds:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m functional_stability.repeated_eval_cli `
+  --train outputs/final_policy_dataset/train.jsonl `
+  --validation outputs/final_policy_dataset/validation.jsonl `
+  --test outputs/final_policy_dataset/test.jsonl `
+  --output outputs/final_policy_dataset/repeated_stronger_cnn_vs_ridge_report.json `
+  --seeds 42,43,44,45,46,47,48,49,50,51 `
+  --epochs 300 `
+  --batch-size 32 `
+  --learning-rate 0.001 `
+  --early-stopping-patience 30 `
+  --ridge-alpha 1.0 `
+  --ridge-test-mae 0.035949
+```
+
+The report includes:
+
+- per-seed `stronger_cnn` validation/test MAE and RMSE;
+- ridge validation/test MAE and RMSE;
+- mean, sample standard deviation, and approximate 95% confidence intervals;
+- separate synthetic and real topology metrics when `sample_id`/`source` metadata
+  identifies the sample family.
+
+Current 10-seed result for seeds `42..51`:
+
+- `stronger_cnn` test MAE mean/std/95% CI:
+  `0.034135` / `0.002674` / `[0.032477, 0.035792]`;
+- `stronger_cnn` test RMSE mean/std/95% CI:
+  `0.049610` / `0.001460` / `[0.048705, 0.050514]`;
+- ridge test MAE: `0.035949`;
+- ridge test RMSE: `0.048865`;
+- mean test MAE difference, CNN minus ridge: `-0.001814`.
+
+By topology family on the test split:
+
+- real samples: `stronger_cnn` MAE `0.036803` vs ridge MAE `0.044578`;
+- synthetic samples: `stronger_cnn` MAE `0.033660` vs ridge MAE `0.034414`.
+
+Conclusion for the current small dataset: `stronger_cnn` is slightly better than ridge
+on mean test MAE, especially on real Topology Zoo samples, but the margin is small
+and the neural confidence interval overlaps the ridge value. Treat this as promising,
+not yet definitive.
 
 If PyTorch is not installed, the CLI exits with a clear install message and no
 training report is produced.

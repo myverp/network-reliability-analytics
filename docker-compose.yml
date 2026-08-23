@@ -1,0 +1,53 @@
+name: network-reliability-analytics
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      NR_ENVIRONMENT: docker
+      NR_DATABASE_URL: postgresql+psycopg://network_user:network_password@db:5432/network_reliability
+      NR_REDIS_URL: redis://redis:6379/0
+      NR_USE_INLINE_JOBS: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build: .
+    command: python -m functional_stability.api.worker
+    environment:
+      NR_ENVIRONMENT: docker
+      NR_DATABASE_URL: postgresql+psycopg://network_user:network_password@db:5432/network_reliability
+      NR_REDIS_URL: redis://redis:6379/0
+      NR_USE_INLINE_JOBS: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: network_reliability
+      POSTGRES_USER: network_user
+      POSTGRES_PASSWORD: network_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U network_user -d network_reliability"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  postgres_data:

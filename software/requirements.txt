@@ -1,5 +1,1 @@
-networkx
-numpy
-torch
-scikit-learn
-matplotlib
+-e .[ml,dev]

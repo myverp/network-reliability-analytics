@@ -1,0 +1,9 @@
+.git
+.venv
+software/.venv
+software/__pycache__
+software/.pytest_cache
+software/.ruff_cache
+software/data
+software/outputs
+*.db

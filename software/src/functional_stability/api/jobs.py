@@ -6,7 +6,7 @@ from uuid import UUID
 
 from redis import Redis
 from rq import Queue
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from ..graph import Edge, Graph
 from ..reliability import all_terminal_reliability
@@ -24,8 +24,16 @@ def run_analysis(analysis_id: str) -> None:
         if analysis is None:
             logger.warning("analysis job received an unknown id", extra={"analysis_id": analysis_id})
             return
-        analysis.status = "running"
+        # Claim atomically: duplicate deliveries must not execute the same analysis twice.
+        claimed = session.execute(
+            update(Analysis)
+            .where(Analysis.id == analysis.id, Analysis.status == "queued")
+            .values(status="running", error=None, completed_at=None)
+        ).rowcount
         session.commit()
+        if not claimed:
+            return
+        session.refresh(analysis)
         try:
             graph = Graph(
                 analysis.node_count,
@@ -55,5 +63,24 @@ def enqueue_analysis(analysis_id: UUID) -> None:
         return
     if not settings.redis_url:
         raise RuntimeError("NR_REDIS_URL must be set when NR_USE_INLINE_JOBS=false")
-    queue = Queue(connection=Redis.from_url(settings.redis_url))
+    queue = Queue(connection=Redis.from_url(settings.redis_url, socket_connect_timeout=3, socket_timeout=3))
     queue.enqueue(run_analysis, str(analysis_id), job_timeout="10m")
+
+
+def submit_analysis(analysis_id: UUID) -> None:
+    """Record delivery failures without overwriting a job already claimed by a worker."""
+    try:
+        enqueue_analysis(analysis_id)
+    except Exception:
+        logger.exception("analysis queue submission failed", extra={"analysis_id": str(analysis_id)})
+        with SessionLocal() as session:
+            session.execute(
+                update(Analysis)
+                .where(Analysis.id == analysis_id, Analysis.status == "queued")
+                .values(
+                    status="submission_failed",
+                    error="Queue submission failed; retry this analysis.",
+                    completed_at=datetime.now(UTC),
+                )
+            )
+            session.commit()

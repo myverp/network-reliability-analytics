@@ -5,17 +5,17 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .database import get_session
 from .errors import NotFoundError
-from .jobs import enqueue_analysis
+from .jobs import submit_analysis
 from .logging import configure_logging
 from .models import Analysis
 from .schemas import AnalysisCreate, AnalysisRead, HealthRead
@@ -88,7 +88,7 @@ def create_analysis(payload: AnalysisCreate, session: Session = Depends(get_sess
     session.add(analysis)
     session.commit()
     session.refresh(analysis)
-    enqueue_analysis(analysis.id)
+    submit_analysis(analysis.id)
     session.refresh(analysis)
     return _to_read(analysis)
 
@@ -105,4 +105,22 @@ def get_analysis(analysis_id: UUID, session: Session = Depends(get_session)) -> 
     analysis = session.get(Analysis, analysis_id)
     if analysis is None:
         raise NotFoundError("analysis", str(analysis_id))
+    return _to_read(analysis)
+
+
+@app.post("/api/v1/analyses/{analysis_id}/retry", response_model=AnalysisRead, status_code=202, tags=["analyses"])
+def retry_analysis(analysis_id: UUID, session: Session = Depends(get_session)) -> AnalysisRead:
+    analysis = session.get(Analysis, analysis_id)
+    if analysis is None:
+        raise NotFoundError("analysis", str(analysis_id))
+    claimed = session.execute(
+        update(Analysis)
+        .where(Analysis.id == analysis_id, Analysis.status.in_(["failed", "submission_failed"]))
+        .values(status="queued", error=None, completed_at=None, reliability=None)
+    ).rowcount
+    session.commit()
+    if not claimed:
+        raise HTTPException(status_code=409, detail={"code": "not_retryable", "message": "Analysis is not failed"})
+    submit_analysis(analysis_id)
+    session.refresh(analysis)
     return _to_read(analysis)

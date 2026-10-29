@@ -72,6 +72,7 @@ experiments.
 | `POST` | `/api/v1/analyses` | Queue an exact network-reliability analysis |
 | `GET` | `/api/v1/analyses` | List recent analyses |
 | `GET` | `/api/v1/analyses/{id}` | Retrieve one analysis and its status/result |
+| `POST` | `/api/v1/analyses/{id}/retry` | Retry a failed analysis using the same ID |
 
 Exact calculations enumerate edge states and are therefore limited to 20 edges
 by default. Configure `NR_MAX_EXACT_EDGES` only with care.
@@ -92,11 +93,24 @@ alembic upgrade head
 
 ```bash
 cd software
-ruff check src tests
+ruff check src/functional_stability/api tests/test_api.py scripts/check_stack.py scripts/test_stack.py
 pytest -q
 ```
 
-GitHub Actions runs the same checks and verifies that the Docker services build.
+GitHub Actions runs these checks. Lint currently covers the API, its unit tests and the integration scripts,
+not the research modules. A separate integration job runs a disposable PostgreSQL,
+Redis, API and RQ worker stack, applies Alembic migrations to a fresh database, checks
+schema drift, and tests calculation success, worker errors, Redis outage and retry.
+
+Run the same integration checks from the repository root (Docker required):
+
+```bash
+python software/scripts/test_stack.py
+```
+
+The runner uses a unique Compose project, publishes no host ports, and removes only
+its own containers and volumes on exit. API unit tests use SQLite and inline jobs;
+they do not replace the real-stack checks.
 
 ## Limitations
 
@@ -105,3 +119,47 @@ GitHub Actions runs the same checks and verifies that the Docker services build.
   treated as general evidence that a CNN outperforms traditional models.
 - The API currently targets demonstration-scale topology-analysis jobs rather
   than multi-tenant or high-throughput production use.
+
+
+## Following a background analysis
+
+With the Docker stack, POST returns HTTP 202 and an analysis ID. For example
+(response fields abbreviated; IDs and timestamps vary):
+
+```json
+{"id": "4c4e7ed3-f181-4bc0-9a70-8e03f146477f", "sample_id": "triangle-001", "status": "queued", "reliability": null}
+```
+
+Poll that ID:
+
+```bash
+curl http://localhost:8000/api/v1/analyses/<id>
+```
+
+The triangle example above completes with:
+
+```json
+{"id": "4c4e7ed3-f181-4bc0-9a70-8e03f146477f", "sample_id": "triangle-001", "status": "completed", "reliability": 0.999702, "error": null}
+```
+
+A fast worker may finish before the initial POST response is returned. Jobs transition from `queued` to `running`, then
+`completed` or `failed`. When queue submission fails, the saved record becomes
+`submission_failed`; POST still returns its ID with HTTP 202 so it can be inspected.
+A lost queue acknowledgement does not overwrite a result already claimed by a worker.
+
+After restoring Redis or fixing a calculation problem, retry the same record:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/analyses/<id>/retry
+```
+
+Only `failed` and `submission_failed` records can be retried; other states return
+409. A repeated create request makes a new analysis; clients should keep the ID
+and use retry rather than resubmitting. Duplicate worker deliveries are ignored
+once an analysis has been claimed.
+
+This is not a durable transactional outbox: process termination between the DB
+commit and enqueue, or a killed worker, can still leave queued/running records.
+Automatic reconciliation of these crash cases is not implemented. `/health`
+checks the database only, not Redis or worker availability. The API has no user
+authentication and should remain a local demo rather than an unrestricted public service.

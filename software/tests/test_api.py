@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -35,6 +36,49 @@ class ApiTests(unittest.TestCase):
 
         database.engine.dispose()
         cls.temp_dir.cleanup()
+
+    def test_queue_failure_can_be_retried_without_new_analysis(self) -> None:
+        with patch("functional_stability.api.jobs.enqueue_analysis", side_effect=ConnectionError("secret")):
+            response = self.client.post("/api/v1/analyses", json={"sample_id": "retry", "node_count": 1})
+        self.assertEqual(response.status_code, 202)
+        result = response.json()
+        self.assertEqual(result["status"], "submission_failed")
+        self.assertNotIn("secret", result["error"])
+        retried = self.client.post(f"/api/v1/analyses/{result['id']}/retry")
+        self.assertEqual(retried.status_code, 202)
+        self.assertEqual(retried.json()["id"], result["id"])
+        self.assertEqual(retried.json()["status"], "completed")
+        self.assertIsNone(retried.json()["error"])
+        self.assertEqual(self.client.post(f"/api/v1/analyses/{result['id']}/retry").status_code, 409)
+
+    def test_worker_failure_is_persisted_and_retryable(self) -> None:
+        with patch(
+            "functional_stability.api.jobs.all_terminal_reliability", side_effect=ValueError("calculation failed")
+        ):
+            result = self.client.post("/api/v1/analyses", json={"sample_id": "worker", "node_count": 1}).json()
+        self.assertEqual(result["status"], "failed")
+        self.assertIsNotNone(result["completed_at"])
+        self.assertEqual(self.client.post(f"/api/v1/analyses/{result['id']}/retry").json()["status"], "completed")
+
+    def test_duplicate_worker_delivery_does_not_recompute(self) -> None:
+        from functional_stability.api.jobs import run_analysis
+
+        result = self.client.post("/api/v1/analyses", json={"sample_id": "duplicate", "node_count": 1}).json()
+        with patch("functional_stability.api.jobs.all_terminal_reliability") as calculate:
+            run_analysis(result["id"])
+            calculate.assert_not_called()
+
+    def test_lost_enqueue_response_preserves_completed_result(self) -> None:
+        from functional_stability.api.jobs import run_analysis
+
+        def deliver_then_fail(analysis_id):
+            run_analysis(str(analysis_id))
+            raise ConnectionError("lost acknowledgement")
+
+        with patch("functional_stability.api.jobs.enqueue_analysis", side_effect=deliver_then_fail):
+            result = self.client.post("/api/v1/analyses", json={"sample_id": "lost-ack", "node_count": 1}).json()
+        self.assertEqual(result["status"], "completed")
+        self.assertIsNone(result["error"])
 
     def test_health(self) -> None:
         response = self.client.get("/health")

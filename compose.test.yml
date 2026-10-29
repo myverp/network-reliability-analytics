@@ -1,0 +1,42 @@
+services:
+  api:
+    build: .
+    environment: &environment
+      NR_DATABASE_URL: postgresql+psycopg://test:test@db:5432/reliability_test
+      NR_REDIS_URL: redis://redis:6379/0
+      NR_USE_INLINE_JOBS: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  worker:
+    build: .
+    command: python -m functional_stability.api.worker
+    environment: *environment
+    depends_on:
+      api:
+        condition: service_healthy
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: reliability_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d reliability_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
